@@ -1,6 +1,7 @@
 import preview from "../../../../.storybook/preview";
 import { type QueueItemScore } from "@/src/features/annotation-queues/lib/queueItemScores";
 import { QueueItemSummaryStrip } from "./QueueItemSummaryStrip";
+import { parseQueueTraceColumns } from "@/src/features/annotation-queues/lib/queueTraceColumns";
 
 const configs = [
   {
@@ -87,6 +88,55 @@ export const NotYetAnnotated = meta.story({
     timestamp: new Date("2026-10-01T09:30:00Z"),
     tags: [],
     scores: [],
+    configs,
+  },
+});
+
+const traceColumns = parseQueueTraceColumns([
+  { source: "trace", key: "userId", label: "Phone", format: "phone" },
+  {
+    source: "metadata",
+    key: "location_name",
+    label: "Location",
+    format: "text",
+  },
+  {
+    source: "metadata",
+    key: "call_seconds",
+    label: "Call length",
+    format: "duration",
+  },
+  {
+    source: "metadata",
+    key: "recording_url",
+    label: "Recording",
+    format: "link",
+  },
+  {
+    source: "metadata",
+    key: "workflow_type",
+    label: "Workflow",
+    format: "badge",
+  },
+]);
+
+export const WithTraceColumns = meta.story({
+  args: {
+    userId: "+13104898893",
+    timestamp: new Date("2026-10-21T22:19:00Z"),
+    tags: ["shop:bowie-barker-west-hollywood"],
+    traceFields: traceColumns.map((column) => ({
+      column,
+      value:
+        {
+          Phone: "+13104898893",
+          Location: "Bowie Barker West Hollywood",
+          "Call length": "135",
+          Recording: "https://example.com/recordings/call-1.mp3",
+          Workflow: "telephony",
+        }[column.label] ?? null,
+    })),
+    scores,
     configs,
   },
 });

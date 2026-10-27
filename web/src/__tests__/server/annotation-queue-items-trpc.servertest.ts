@@ -255,6 +255,117 @@ describe("annotation queues trpc", () => {
       expect(unscoredItem?.trace).toBeNull();
     });
 
+    it("returns and filters on the queue's trace columns", async () => {
+      const setup = await createOrgProjectAndApiKey();
+      orgIds.push(setup.org.id);
+      const projectId = setup.project.id;
+      const { caller } = createCallerForProjectRole(setup);
+
+      const config = await createScoreConfig(projectId);
+      const queue = await caller.annotationQueues.create({
+        projectId,
+        name: `queue-${uuidv4().slice(0, 8)}`,
+        scoreConfigIds: [config.id],
+        displayColumns: [
+          { source: "trace", key: "userId", label: "Phone", format: "phone" },
+          {
+            source: "metadata",
+            key: "location_name",
+            label: "Location",
+            format: "text",
+          },
+          { source: "tag", key: "shop:", label: "Shop", format: "text" },
+        ],
+      });
+      const traces = [
+        { id: uuidv4(), location: "West Hollywood", shop: "weho" },
+        { id: uuidv4(), location: "Santa Monica", shop: "sm" },
+      ];
+      for (const [index, trace] of traces.entries()) {
+        await prisma.annotationQueueItem.create({
+          data: {
+            queueId: queue.id,
+            objectId: trace.id,
+            objectType: AnnotationQueueObjectType.TRACE,
+            projectId,
+            createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)),
+          },
+        });
+      }
+      // Write the traces to both stores so the test holds for every write mode.
+      await createTracesCh(
+        traces.map((trace) =>
+          createTrace({
+            id: trace.id,
+            project_id: projectId,
+            user_id: "+13104898893",
+            tags: [`shop:${trace.shop}`],
+            metadata: { location_name: trace.location },
+          }),
+        ),
+      );
+      await createEventsCh(
+        traces.map((trace) =>
+          createEvent({
+            project_id: projectId,
+            trace_id: trace.id,
+            user_id: "+13104898893",
+            tags: [`shop:${trace.shop}`],
+            metadata_names: ["location_name"],
+            metadata_values: [trace.location],
+          }),
+        ),
+      );
+
+      const byId = await caller.annotationQueues.byId({
+        projectId,
+        queueId: queue.id,
+      });
+      expect(byId.displayColumns.map((column) => column.label)).toEqual([
+        "Phone",
+        "Location",
+        "Shop",
+      ]);
+      const [phone, location, shop] = byId.displayColumns;
+
+      const all = await caller.annotationQueueItems.itemsByQueueId({
+        projectId,
+        queueId: queue.id,
+        page: 0,
+        limit: 50,
+      });
+      expect(all.queueItems.map((item) => item.traceFields)).toEqual([
+        {
+          [phone.id]: "+13104898893",
+          [location.id]: "West Hollywood",
+          [shop.id]: "weho",
+        },
+        {
+          [phone.id]: "+13104898893",
+          [location.id]: "Santa Monica",
+          [shop.id]: "sm",
+        },
+      ]);
+
+      const filtered = await caller.annotationQueueItems.itemsByQueueId({
+        projectId,
+        queueId: queue.id,
+        filter: [
+          {
+            column: "Location",
+            type: "string",
+            operator: "contains",
+            value: "monica",
+          },
+        ],
+        page: 0,
+        limit: 50,
+      });
+      expect(filtered.queueItems.map((item) => item.objectId)).toEqual([
+        traces[1].id,
+      ]);
+    });
+
     it("filters on the shown value and paginates the matches", async () => {
       const setup = await createOrgProjectAndApiKey();
       orgIds.push(setup.org.id);

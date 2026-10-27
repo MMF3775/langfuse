@@ -110,16 +110,36 @@ const CATEGORY_PREFIX_COLOR_OVERRIDES: [prefix: string, color: BadgeColor][] = [
   ["not_", "red"],
 ];
 
+const getOverrideBadgeColor = (label: string): BadgeColor | undefined => {
+  const normalized = label.trim().toLowerCase();
+  return (
+    CATEGORY_COLOR_OVERRIDES[normalized] ??
+    CATEGORY_PREFIX_COLOR_OVERRIDES.find(([prefix]) =>
+      normalized.startsWith(prefix),
+    )?.[1]
+  );
+};
+
+/**
+ * Colour for a free-form value without a category list: the override if one
+ * matches, otherwise a palette colour picked by a hash of the value, so the
+ * same value always gets the same colour.
+ */
+export function getValueBadgeColor(label: string): BadgeColor {
+  const override = getOverrideBadgeColor(label);
+  if (override) return override;
+  let hash = 0;
+  for (const char of label) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 2_147_483_647;
+  }
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length];
+}
+
 export function getCategoryBadgeColor(
   label: string,
   config: Pick<ScoreConfigDomain, "categories">,
 ): BadgeColor {
-  const normalized = label.trim().toLowerCase();
-  const override =
-    CATEGORY_COLOR_OVERRIDES[normalized] ??
-    CATEGORY_PREFIX_COLOR_OVERRIDES.find(([prefix]) =>
-      normalized.startsWith(prefix),
-    )?.[1];
+  const override = getOverrideBadgeColor(label);
   if (override) return override;
 
   const index =

@@ -98,6 +98,9 @@ export function AnnotationQueueSetupController({
         name: queue.data.name ?? "",
         description: queue.data.description ?? "",
         scoreConfigIds: queue.data.scoreConfigs.map((config) => config.id),
+        displayColumns: (queue.data.displayColumns ?? []).map(
+          ({ source, key, label, format }) => ({ source, key, label, format }),
+        ),
         newAssignmentUserIds: [],
       }}
       queueNames={(queues.data ?? [])
@@ -119,6 +122,10 @@ export function AnnotationQueueSetupController({
             await Promise.all([
               utils.annotationQueues.invalidate(),
               utils.annotationQueueAssignments.invalidate(),
+              // Table columns change what the items query returns.
+              ...(dirty.displayColumns
+                ? [utils.annotationQueueItems.invalidate()]
+                : []),
             ]);
             if (dirty.scoreConfigIds)
               capture("annotation_queues:score_configs_saved", {
@@ -171,7 +178,12 @@ async function saveQueueSetup({
   ) => Promise<unknown>;
   onSaved: () => Promise<void>;
 }) {
-  if (dirty.name || dirty.description || dirty.scoreConfigIds) {
+  if (
+    dirty.name ||
+    dirty.description ||
+    dirty.scoreConfigIds ||
+    dirty.displayColumns
+  ) {
     await updateQueue({
       projectId,
       queueId,
@@ -179,6 +191,9 @@ async function saveQueueSetup({
       ...(dirty.description ? { description: values.description } : {}),
       ...(dirty.scoreConfigIds
         ? { scoreConfigIds: values.scoreConfigIds }
+        : {}),
+      ...(dirty.displayColumns
+        ? { displayColumns: values.displayColumns }
         : {}),
     });
   }
