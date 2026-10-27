@@ -1,0 +1,53 @@
+# Fork-only: builds the patched web image (annotation queue score columns).
+# The worker keeps using the official image of the same upstream version.
+name: Lyratalk web image
+
+on:
+  push:
+    tags:
+      - "v*-lyratalk.*"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: lyratalk-web-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Override with the repository variable LYRATALK_WEB_IMAGE, e.g.
+      # registry.example.com/lyratalk/langfuse-web. Defaults to GHCR.
+      IMAGE: ${{ vars.LYRATALK_WEB_IMAGE || format('ghcr.io/{0}/langfuse-web', github.repository_owner) }}
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ vars.LYRATALK_REGISTRY || 'ghcr.io' }}
+          username: ${{ secrets.LYRATALK_REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.LYRATALK_REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          # Tags look like v4.70.0-lyratalk.1; the image tag drops the leading "v".
+          TAG="${VERSION#v}"
+          IMAGE_LC="$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')"
+          docker build \
+            -f web/Dockerfile \
+            --build-arg NEXT_PUBLIC_BUILD_ID="$(git rev-parse --short HEAD)" \
+            -t "$IMAGE_LC:$TAG" \
+            .
+          docker push "$IMAGE_LC:$TAG"
+          echo "Pushed $IMAGE_LC:$TAG" >> "$GITHUB_STEP_SUMMARY"
